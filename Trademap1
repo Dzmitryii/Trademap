@@ -95,8 +95,8 @@ def scrape_trademap_data(driver):
 
 if __name__ == "__main__":
     driver = webdriver.Firefox()
-    username = "mcdino91@outlook.com"  # Replace with your actual username
-    password = "5641856Cc"  # Replace with your actual password
+    username = ""  # Replace with your actual username
+    password = ""  # Replace with your actual password
     login(driver, username, password)
     scrape_trademap_data(driver)
     driver.close()
