@@ -1,0 +1,102 @@
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException
+import xlsxwriter
+import time  # Импорт модуля time
+
+def login(driver, username, password):
+    login_url = "https://idserv.marketanalysis.intracen.org/Account/Login?ReturnUrl=%2Fconnect%2Fauthorize%2Fcallback%3Fclient_id%3DTradeMap%26scope%3Dopenid%2520email%2520profile%2520offline_access%2520ActivityLog%26redirect_uri%3Dhttps%253A%252F%252Fwww.trademap.org%252FLoginCallback.aspx%26state%3D9429b88dae474524864a16af65ddb7fa%26response_type%3Dcode%2520id_token%26nonce%3D283522e22ae845bcb2c3e1d5af427d8b%26response_mode%3Dform_post"
+    driver.get(login_url)
+
+    WebDriverWait(driver, 10).until(EC.visibility_of_element_located((By.ID, "Username")))
+
+    username_field = driver.find_element(By.ID, "Username")
+    password_field = driver.find_element(By.ID, "Password")
+
+    username_field.send_keys(username)
+    password_field.send_keys(password)
+
+    login_button = WebDriverWait(driver, 10).until(
+        EC.element_to_be_clickable((By.CSS_SELECTOR, 'button.btn.btn-lg.btn-block.btn-primary.mb-1')))
+    login_button.click()
+
+    expected_url = "https://www.trademap.org/Index.aspx"
+    WebDriverWait(driver, 20).until(EC.url_to_be(expected_url))
+
+    print("Вход выполнен успешно, текущий URL: ", driver.current_url)
+
+def scrape_trademap_data(driver):
+    workbook = None
+    worksheet = None
+    k = 1
+    file_number = 1
+
+    for j in range(1631000, 1631100):  # Adjust the range as needed
+        if j % 100 == 1:  # Новый файл каждые 100 страниц
+            if workbook is not None:
+                workbook.close()
+            workbook = xlsxwriter.Workbook(f'trademap_data_kyr_1_part{file_number}.xlsx')
+            worksheet = workbook.add_worksheet()
+            worksheet.set_column('B:B', 20)
+            worksheet.set_column('C:C', 12)
+            headers = ['№', 'Company Name', 'Country', 'City', 'Website', 'Phone', 'Contact Name',
+                       'Product or Service Category', 'D/P/S/I/E']
+            for i, header in enumerate(headers):
+                worksheet.write(0, i, header)
+            k = 1
+            file_number += 1
+
+        for src in [1, 2]:
+            target_url = f'https://www.trademap.org/PopupCompany.aspx?compid={j}&src={src}'
+            print(f"Переход по URL: {target_url}")
+            driver.get(target_url)
+
+            try:
+                WebDriverWait(driver, 90).until(EC.presence_of_element_located((By.CLASS_NAME, "popupTitleCentered")))
+                print("Страница загружена успешно")
+                button = driver.find_element(By.ID, "products")
+                button.click()
+
+                company_name = driver.find_element(By.XPATH, '//div[@class ="popupTitleCentered"]').text
+                country = driver.find_element(By.XPATH, '//td[contains(text(), "Country")]/../td[3]').text
+                city = driver.find_element(By.XPATH, '//td[contains(text(), "City")]/../td[3]').text
+                website = driver.find_element(By.ID, "HyperLink_Website").get_attribute('href')
+                phone = driver.find_element(By.XPATH, '//td[contains(text(), "Phone")]/../td[3]').text
+                contact_name = driver.find_element(By.XPATH, '//td[contains(text(), "Contact name")]/../td[3]').text
+
+                products_elements = driver.find_elements(By.XPATH, '//a[contains(@id, "ProductsGridView")]')
+                types_elements = driver.find_elements(By.XPATH, '//a[contains(@id, "ProductsGridView")]/../../td[2]')
+
+                print(company_name, country, city, phone, contact_name, len(products_elements), types_elements)
+
+                for prod, typ in zip(products_elements, types_elements):
+                    product = prod.text.strip()
+                    type_ = typ.text.strip()
+                    worksheet.write(k, 0, j)
+                    worksheet.write(k, 1, company_name)
+                    worksheet.write(k, 2, country)
+                    worksheet.write(k, 3, city)
+                    worksheet.write(k, 4, website if website else 'Not Available')
+                    worksheet.write(k, 5, phone)
+                    worksheet.write(k, 6, contact_name)
+                    worksheet.write(k, 7, product)
+                    worksheet.write(k, 8, type_)
+                    k += 1
+
+                time.sleep(3)  # Задержка на 2 секунду после обработки каждой страницы
+
+            except TimeoutException:
+                print(f"Не удалось загрузить элементы на странице: {target_url}")
+                continue
+
+    workbook.close()  # Закрыть книгу после завершения цикла
+
+if __name__ == "__main__":
+    driver = webdriver.Firefox()
+    username = "mcdino91@outlook.com"  # Replace with your actual username
+    password = "5641856Cc"  # Replace with your actual password
+    login(driver, username, password)
+    scrape_trademap_data(driver)
+    driver.close()
